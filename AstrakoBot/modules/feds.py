@@ -1972,22 +1972,62 @@ def del_fed_button(update: Update, context: CallbackContext):
                 parse_mode="markdown",
             )
 
-
 def fed_stat_user(update: Update, context: CallbackContext):
     bot, args = context.bot, context.args
     chat = update.effective_chat
     user = update.effective_user
     msg = update.effective_message
+    fed_id = None
+    user_id = None
 
-    if args:
-        if args[0].isdigit():
-            user_id = args[0]
+    fids, uids = [],[]
+    [[fids, uids][arg.isdigit()].append(arg) for arg in args]
+    
+    if len(uids) > 1:
+        msg.reply_text("Incorrect usage!")
+        return
+
+    if fids:
+        if len(fids) == 2:
+            check = [fid.startswith('@') for fid in fids]
+            if check == [True, False]:
+                fids.reverse()
+            elif not check == [False, True]:
+                msg.reply_text("Incorrect usage!")
+                return
+    fed_id = fids and not fids[0].startswith('@') and fids[0] or None
+    user_id = (uids and uids[0]) or extract_user(msg,fids[::-1]) or user.id
+
+    if fed_id:
+        fedinfo = sql.get_fed_info(fed_id)
+        
+        if not fedinfo:
+            msg.reply_text("Fed {} not found!".format(fed_id))
+            return
+        name, reason, fbantime = sql.get_user_fban(fed_id,user_id)
+        if fbantime:
+            fbantime = time.strftime("%d/%m/%Y", time.localtime(fbantime))
         else:
-            user_id = extract_user(msg, args)
+            fbantime = "Unavaiable"
+        if not name:
+            try:
+                name = bot.get_chat(user_id).first_name
+            except BadRequest:
+                name = "User"
+            if not name:
+                name = "User"
+        if not reason:
+            msg.reply_text(
+                "{} is not banned in this federation".format(name),
+            )
+            return
+        msg.reply_text(
+            "{} banned in this federation because:\n`{}`\n*Banned at:* `{}`".format(
+                name, reason, fbantime
+            ),
+            parse_mode="markdown",
+        )
     else:
-        user_id = extract_user(msg, args)
-
-    if user_id:
         if len(args) == 2 and args[0].isdigit():
             fed_id = args[1]
             user_name, reason, fbantime = sql.get_user_fban(fed_id, str(user_id))
@@ -1996,36 +2036,33 @@ def fed_stat_user(update: Update, context: CallbackContext):
             else:
                 fbantime = "Unavaiable"
             if user_name is False:
-                send_message(
-                    update.effective_message,
+                msg.reply_text(
                     "Fed {} not found!".format(fed_id),
                     parse_mode="markdown",
                 )
                 return
             if not user_name:
-                user_name = "He/she"
+                user_name = "User"
             if not reason:
-                send_message(
-                    update.effective_message,
+                msg.reply_text(
                     "{} is not banned in this federation!".format(user_name),
                 )
             else:
                 teks = "{} banned in this federation because:\n`{}`\n*Banned at:* `{}`".format(
                     user_name, reason, fbantime
                 )
-                send_message(update.effective_message, teks, parse_mode="markdown")
+                msg.reply_text(teks, parse_mode="markdown")
             return
         user_name, fbanlist = sql.get_user_fbanlist(str(user_id))
         if not user_name:
             try:
                 user_name = bot.get_chat(user_id).first_name
             except BadRequest:
-                user_name = "He/she"
+                user_name = "User"
             if not user_name:
-                user_name = "He/she"
+                user_name = "User"
         if len(fbanlist) == 0:
-            send_message(
-                update.effective_message,
+            msg.reply_text(
                 "{} is not banned in any federation!".format(user_name),
             )
             return
@@ -2034,51 +2071,7 @@ def fed_stat_user(update: Update, context: CallbackContext):
             for x in fbanlist:
                 teks += "- `{}`: {}\n".format(x[0], x[1][:20])
             teks += "\nIf you want to find out more about the reasons for Fedban specifically, use /fbanstat <FedID>"
-            send_message(update.effective_message, teks, parse_mode="markdown")
-
-    elif not msg.reply_to_message and not args:
-        user_id = msg.from_user.id
-        user_name, fbanlist = sql.get_user_fbanlist(user_id)
-        if not user_name:
-            user_name = msg.from_user.first_name
-        if len(fbanlist) == 0:
-            send_message(
-                update.effective_message,
-                "{} is not banned in any federation!".format(user_name),
-            )
-        else:
-            teks = "{} has been banned in this federation:\n".format(user_name)
-            for x in fbanlist:
-                teks += "- `{}`: {}\n".format(x[0], x[1][:20])
-            teks += "\nIf you want to find out more about the reasons for Fedban specifically, use /fbanstat <FedID>"
-            send_message(update.effective_message, teks, parse_mode="markdown")
-
-    else:
-        fed_id = args[0]
-        fedinfo = sql.get_fed_info(fed_id)
-        if not fedinfo:
-            send_message(update.effective_message, "Fed {} not found!".format(fed_id))
-            return
-        name, reason, fbantime = sql.get_user_fban(fed_id, msg.from_user.id)
-        if fbantime:
-            fbantime = time.strftime("%d/%m/%Y", time.localtime(fbantime))
-        else:
-            fbantime = "Unavaiable"
-        if not name:
-            name = msg.from_user.first_name
-        if not reason:
-            send_message(
-                update.effective_message,
-                "{} is not banned in this federation".format(name),
-            )
-            return
-        send_message(
-            update.effective_message,
-            "{} banned in this federation because:\n`{}`\n*Banned at:* `{}`".format(
-                name, reason, fbantime
-            ),
-            parse_mode="markdown",
-        )
+            msg.reply_text(teks, parse_mode="markdown")
 
 
 def set_fed_log(update: Update, context: CallbackContext):
